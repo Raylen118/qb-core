@@ -55,7 +55,12 @@ end
 ---@param citizenid string
 ---@return table?
 function QBCore.Functions.GetPlayerByCitizenId(citizenid)
-    return QBCore.PlayersByCitizenId[citizenid]
+    for _, Player in pairs(QBCore.Players) do
+        if Player.PlayerData.citizenid == citizenid then
+            return Player
+        end
+    end
+    return nil
 end
 
 ---Get offline player by citizen id
@@ -299,12 +304,16 @@ end
 ---@return table|boolean
 function QBCore.Functions.GetPlayersInBucket(bucket)
     local curr_bucket_pool = {}
-    for _, v in pairs(QBCore.Player_Buckets) do
-        if v.bucket == bucket then
-            curr_bucket_pool[#curr_bucket_pool + 1] = v.id
+    if QBCore.Player_Buckets and next(QBCore.Player_Buckets) then
+        for _, v in pairs(QBCore.Player_Buckets) do
+            if v.bucket == bucket then
+                curr_bucket_pool[#curr_bucket_pool + 1] = v.id
+            end
         end
+        return curr_bucket_pool
+    else
+        return false
     end
-    return curr_bucket_pool
 end
 
 ---Will return an array of all the entities inside the current bucket
@@ -313,12 +322,16 @@ end
 ---@return table|boolean
 function QBCore.Functions.GetEntitiesInBucket(bucket)
     local curr_bucket_pool = {}
-    for _, v in pairs(QBCore.Entity_Buckets) do
-        if v.bucket == bucket then
-            curr_bucket_pool[#curr_bucket_pool + 1] = v.id
+    if QBCore.Entity_Buckets and next(QBCore.Entity_Buckets) then
+        for _, v in pairs(QBCore.Entity_Buckets) do
+            if v.bucket == bucket then
+                curr_bucket_pool[#curr_bucket_pool + 1] = v.id
+            end
         end
+        return curr_bucket_pool
+    else
+        return false
     end
-    return curr_bucket_pool
 end
 
 ---Server side vehicle creation with optional callback
@@ -334,24 +347,14 @@ function QBCore.Functions.SpawnVehicle(source, model, coords, warp)
     if not coords then coords = GetEntityCoords(ped) end
     local heading = coords.w and coords.w or 0.0
     local veh = CreateVehicle(model, coords.x, coords.y, coords.z, heading, true, true)
-    local t = 0
-    while not DoesEntityExist(veh) and t < 1000 do
-        Wait(0)
-        t += 1
-    end
+    while not DoesEntityExist(veh) do Wait(0) end
     if warp then
-        t = 0
-        while GetVehiclePedIsIn(ped) ~= veh and t < 100 do
+        while GetVehiclePedIsIn(ped) ~= veh do
             Wait(0)
-            t += 1
             TaskWarpPedIntoVehicle(ped, veh, -1)
         end
     end
-    t = 0
-    while NetworkGetEntityOwner(veh) ~= source and t < 1000 do
-        Wait(0)
-        t += 1
-    end
+    while NetworkGetEntityOwner(veh) ~= source do Wait(0) end
     return veh
 end
 
@@ -370,11 +373,7 @@ function QBCore.Functions.CreateAutomobile(source, model, coords, warp)
     local heading = coords.w and coords.w or 0.0
     local CreateAutomobile = `CREATE_AUTOMOBILE`
     local veh = Citizen.InvokeNative(CreateAutomobile, model, coords, heading, true, true)
-    local t = 0
-    while not DoesEntityExist(veh) and t < 1000 do
-        Wait(0)
-        t += 1
-    end
+    while not DoesEntityExist(veh) do Wait(0) end
     if warp then TaskWarpPedIntoVehicle(GetPlayerPed(source), veh, -1) end
     return veh
 end
@@ -396,11 +395,7 @@ function QBCore.Functions.CreateVehicle(source, model, vehtype, coords, warp)
     if not coords then coords = GetEntityCoords(GetPlayerPed(source)) end
     local heading = coords.w and coords.w or 0.0
     local veh = CreateVehicleServerSetter(model, vehtype, coords, heading)
-    local t = 0
-    while not DoesEntityExist(veh) and t < 1000 do
-        Wait(0)
-        t += 1
-    end
+    while not DoesEntityExist(veh) do Wait(0) end
     if warp then TaskWarpPedIntoVehicle(GetPlayerPed(source), veh, -1) end
     return veh
 end
@@ -413,11 +408,9 @@ function PaycheckInterval()
     CreateThread(function()
         for _, Player in pairs(QBCore.Players) do
             if Player then
-                local jobData = QBCore.Shared.Jobs[Player.PlayerData.job.name]
-                local gradeData = jobData and jobData['grades'][tostring(Player.PlayerData.job.grade.level)]
-                local payment = gradeData and gradeData.payment
+                local payment = QBShared.Jobs[Player.PlayerData.job.name]['grades'][tostring(Player.PlayerData.job.grade.level)].payment
                 if not payment then payment = Player.PlayerData.job.payment end
-                if Player.PlayerData.job and payment > 0 and (QBCore.Shared.Jobs[Player.PlayerData.job.name].offDutyPay or Player.PlayerData.job.onduty) then
+                if Player.PlayerData.job and payment > 0 and (QBShared.Jobs[Player.PlayerData.job.name].offDutyPay or Player.PlayerData.job.onduty) then
                     if QBCore.Config.Money.PayCheckSociety then
                         local account = exports['qb-banking']:GetAccountBalance(Player.PlayerData.job.name)
                         if account ~= 0 then
@@ -470,9 +463,7 @@ function QBCore.Functions.TriggerClientCallback(name, source, ...)
 
     if cb == nil then
         Citizen.Await(QBCore.ClientCallbacks[name .. source].promise)
-        local value = QBCore.ClientCallbacks[name .. source].promise.value
-        QBCore.ClientCallbacks[name .. source] = nil
-        return value
+        return QBCore.ClientCallbacks[name .. source].promise.value
     end
 end
 
@@ -487,7 +478,7 @@ end
 
 ---Create a usable item
 ---@param item string
----@param data function
+---@param data function|table
 function QBCore.Functions.CreateUseableItem(item, data)
     local rawFunc = nil
 
@@ -499,8 +490,10 @@ function QBCore.Functions.CreateUseableItem(item, data)
         elseif data.callback and rawget(data.callback, '__cfx_functionReference') then
             rawFunc = data.callback
         end
-    elseif type(data) == 'function' then
-        rawFunc = data
+    end
+
+    if not rawFunc and type(data) == 'function' then
+        rawFunc = Citizen.CreateFunctionReference(data)
     end
 
     if rawFunc then
@@ -508,6 +501,11 @@ function QBCore.Functions.CreateUseableItem(item, data)
             func = rawFunc,
             resource = GetInvokingResource()
         }
+        -- Optinal for debugging:
+        -- print(("✅ Registered usable item: ^3%s^0"):format(item))
+    else
+        -- Optinal for debugging:
+        -- print(("^1[QBCore] Failed to register usable item: %s - Invalid handler^0"):format(item))
     end
 end
 
@@ -547,7 +545,7 @@ function QBCore.Functions.Kick(source, reason, setKickReason, deferrals)
         for _ = 0, 4 do
             while true do
                 if source then
-                    if GetPlayerPing(source) < 0 then
+                    if GetPlayerPing(source) >= 0 then
                         break
                     end
                     CreateThread(function()
@@ -732,8 +730,27 @@ function QBCore.Functions.Notify(source, text, type, length)
     TriggerClientEvent('QBCore:Notify', source, text, type, length)
 end
 
+---???? ... ok
+---@param source any
+---@param data any
+---@param pattern any
+---@return boolean
+function QBCore.Functions.PrepForSQL(source, data, pattern)
+    data = tostring(data)
+    local src = source
+    local player = QBCore.Functions.GetPlayer(src)
+    local result = string.match(data, pattern)
+    if not result or string.len(result) ~= string.len(data) then
+        TriggerEvent('qb-log:server:CreateLog', 'anticheat', 'SQL Exploit Attempted', 'red', string.format('%s attempted to exploit SQL!', player.PlayerData.license))
+        return false
+    end
+    return true
+end
+
 for functionName, func in pairs(QBCore.Functions) do
     if type(func) == 'function' then
         exports(functionName, func)
     end
 end
+-- Access a specific function directly:
+-- exports['qb-core']:Notify(source, 'Hello Player!')

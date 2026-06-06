@@ -10,18 +10,16 @@ end)
 AddEventHandler('playerDropped', function(reason)
     local src = source
     if not QBCore.Players[src] then return end
-    local player = QBCore.Players[src]
-    TriggerEvent('qb-log:server:CreateLog', 'joinleave', 'Dropped', 'red', '**' .. GetPlayerName(src) .. '** (' .. player.PlayerData.license .. ') left..' .. '\n **Reason:** ' .. reason)
-    player.Functions.Save()
-    TriggerEvent('QBCore:Server:PlayerDropped', src)
-    TriggerEvent('QBCore:Server:OnPlayerUnload', src)
-    QBCore.Player_Buckets[player.PlayerData.license] = nil
-    QBCore.PlayersByCitizenId[player.PlayerData.citizenid] = nil
+    local Player = QBCore.Players[src]
+    TriggerEvent('qb-log:server:CreateLog', 'joinleave', 'Dropped', 'red', '**' .. GetPlayerName(src) .. '** (' .. Player.PlayerData.license .. ') left..' .. '\n **Reason:** ' .. reason)
+    TriggerEvent('QBCore:Server:PlayerDropped', Player)
+    Player.Functions.Save()
+    QBCore.Player_Buckets[Player.PlayerData.license] = nil
     QBCore.Players[src] = nil
 end)
 
-AddEventHandler('onResourceStop', function(resName)
-    for i, v in pairs(QBCore.UsableItems) do
+AddEventHandler("onResourceStop", function(resName)
+    for i,v in pairs(QBCore.UsableItems) do
         if v.resource == resName then
             QBCore.UsableItems[i] = nil
         end
@@ -38,7 +36,7 @@ if readyFunction ~= nil then
         local DatabaseInfo = QBCore.Functions.GetDatabaseInfo()
         if not DatabaseInfo or not DatabaseInfo.exists then return end
 
-        local result = MySQL.query.await('SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = "bans";', { DatabaseInfo.database })
+        local result = MySQL.query.await('SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = "bans";', {DatabaseInfo.database})
         if result and result[1] then
             bansTableExists = true
         end
@@ -126,7 +124,7 @@ end)
 
 -- Client Callback
 RegisterNetEvent('QBCore:Server:TriggerClientCallback', function(name, ...)
-    local ClientCallback = QBCore.ClientCallbacks[name .. source]
+    local ClientCallback = QBCore.ClientCallbacks[name..source]
     if ClientCallback then
         ClientCallback.promise:resolve(...)
 
@@ -134,7 +132,7 @@ RegisterNetEvent('QBCore:Server:TriggerClientCallback', function(name, ...)
             ClientCallback.callback(...)
         end
 
-        QBCore.ClientCallbacks[name .. source] = nil
+        QBCore.ClientCallbacks[name..source] = nil
     end
 end)
 
@@ -151,12 +149,8 @@ end)
 
 -- Player
 
-local updateCooldowns = {}
 RegisterNetEvent('QBCore:UpdatePlayer', function()
     local src = source
-    local now = GetGameTimer()
-    if updateCooldowns[src] and (now - updateCooldowns[src]) < 10000 then return end
-    updateCooldowns[src] = now
     local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
     local newHunger = Player.PlayerData.metadata['hunger'] - QBCore.Config.Player.HungerRate
@@ -167,9 +161,8 @@ RegisterNetEvent('QBCore:UpdatePlayer', function()
     if newThirst <= 0 then
         newThirst = 0
     end
-    Player.PlayerData.metadata['hunger'] = newHunger
-    Player.PlayerData.metadata['thirst'] = newThirst
-    Player.Functions.UpdateClient('metadata', Player.PlayerData.metadata)
+    Player.Functions.SetMetaData('thirst', newThirst)
+    Player.Functions.SetMetaData('hunger', newHunger)
     TriggerClientEvent('hud:client:UpdateNeeds', src, newHunger, newThirst)
     Player.Functions.Save()
 end)
@@ -188,24 +181,6 @@ RegisterNetEvent('QBCore:ToggleDuty', function()
 
     TriggerEvent('QBCore:Server:SetDuty', src, Player.PlayerData.job.onduty)
     TriggerClientEvent('QBCore:Client:SetDuty', src, Player.PlayerData.job.onduty)
-end)
-
-RegisterNetEvent('QBCore:Server:OnPlayerLoaded', function()
-    local src = source
-    if not QBCore.Players[src] then return end
-    TriggerClientEvent('QBCore:Client:OnPlayerLoaded', src)
-end)
-
--- Central server-side data change handler — re-fires legacy events for backward compat
-AddEventHandler('QBCore:Server:OnPlayerUpdated', function(src, key, val)
-    if key == 'job' then
-        TriggerEvent('QBCore:Server:OnJobUpdate', src, val)
-    elseif key == 'gang' then
-        TriggerEvent('QBCore:Server:OnGangUpdate', src, val)
-    elseif key == 'all' then
-        TriggerEvent('QBCore:Server:OnJobUpdate', src, val.job)
-        TriggerEvent('QBCore:Server:OnGangUpdate', src, val.gang)
-    end
 end)
 
 -- BaseEvents
@@ -249,6 +224,26 @@ RegisterServerEvent('baseevents:leftVehicle', function(veh, seat, modelName)
     TriggerClientEvent('QBCore:Client:VehicleInfo', src, data)
 end)
 
+-- Items
+
+-- This event is exploitable and should not be used. It has been deprecated, and will be removed soon.
+RegisterNetEvent('QBCore:Server:UseItem', function(item)
+    print(string.format('%s triggered QBCore:Server:UseItem by ID %s with the following data. This event is deprecated due to exploitation, and will be removed soon. Check codem-inventory for the right use on this event.', GetInvokingResource(), source))
+    QBCore.Debug(item)
+end)
+
+-- This event is exploitable and should not be used. It has been deprecated, and will be removed soon. function(itemName, amount, slot)
+RegisterNetEvent('QBCore:Server:RemoveItem', function(itemName, amount)
+    local src = source
+    print(string.format('%s triggered QBCore:Server:RemoveItem by ID %s for %s %s. This event is deprecated due to exploitation, and will be removed soon. Adjust your events accordingly to do this server side with player functions.', GetInvokingResource(), src, amount, itemName))
+end)
+
+-- This event is exploitable and should not be used. It has been deprecated, and will be removed soon. function(itemName, amount, slot, info)
+RegisterNetEvent('QBCore:Server:AddItem', function(itemName, amount)
+    local src = source
+    print(string.format('%s triggered QBCore:Server:AddItem by ID %s for %s %s. This event is deprecated due to exploitation, and will be removed soon. Adjust your events accordingly to do this server side with player functions.', GetInvokingResource(), src, amount, itemName))
+end)
+
 -- Non-Chat Command Calling (ex: qb-adminmenu)
 
 RegisterNetEvent('QBCore:CallCommand', function(command, args)
@@ -274,7 +269,7 @@ end)
 -- convert it to a vehicle via the NetToVeh native
 QBCore.Functions.CreateCallback('QBCore:Server:SpawnVehicle', function(source, cb, model, coords, warp)
     local veh = QBCore.Functions.SpawnVehicle(source, model, coords, warp)
-    cb(DoesEntityExist(veh) and NetworkGetNetworkIdFromEntity(veh) or nil)
+    cb(NetworkGetNetworkIdFromEntity(veh))
 end)
 
 -- Use this for long distance vehicle spawning
@@ -283,7 +278,7 @@ end)
 -- convert it to a vehicle via the NetToVeh native
 QBCore.Functions.CreateCallback('QBCore:Server:CreateVehicle', function(source, cb, model, coords, warp)
     local veh = QBCore.Functions.CreateAutomobile(source, model, coords, warp)
-    cb(DoesEntityExist(veh) and NetworkGetNetworkIdFromEntity(veh) or nil)
+    cb(NetworkGetNetworkIdFromEntity(veh))
 end)
 
 --QBCore.Functions.CreateCallback('QBCore:HasItem', function(source, cb, items, amount)
